@@ -113,5 +113,5 @@ func main(){
 	})
 
 	log.Print("Starting server at localhost:8080")
-	http.ListenAndServeTLS(":8080", "server.crt", "server.key", nil)
+	http.ListenAndServe(":8080", nil)
 }
