@@ -93,7 +93,7 @@
             this.usuarios = [];
         },
         connect(){
-            this.ws = new WebSocket("ws://localhost:8080/ws?nickname=" + this.nickname);
+            this.ws = new WebSocket("ws://chatgo-q0oo.onrender.com/ws?nickname=" + this.nickname);
             this.ws.onopen = this.onOpen;
             this.ws.onmessage = this.onMessage;
         },
