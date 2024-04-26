@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"nhooyr.io/websocket"
 )
@@ -11,10 +13,19 @@ import (
 type Client struct{
 	Nickname string
 	conn *websocket.Conn
+	ctx context.Context
+}
+
+type Message struct{
+	From string `json:"from"`
+	Content string `json:"content"`
+	SentAt string `json:"sentAt"`
 }
 
 var(
 	clients map[*Client]bool = make(map[*Client]bool)
+	joinCh chan *Client = make(chan *Client)
+	broadcastCh chan Message = make(chan Message)
 )
 
 
@@ -27,26 +38,61 @@ func wsHandler(w http.ResponseWriter, r *http.Request){
 	if err != nil{
 		log.Panic(err)
 	}
+	
+	
+	go joiner()
+	go broadcast()
+
 	newClient := Client{
 		Nickname: nickname,
 		conn: conn,
-	}
-	clients[&newClient] = true
-	for client := range clients{
-		client.conn.Write(r.Context(), websocket.MessageText, []byte("O usuário " + nickname + " se conectou."))
+		ctx: r.Context(),
 	}
 
+
+	joinCh <- &newClient
+
+	
 	for{
 		_, data, err := newClient.conn.Read(r.Context())
 		if err != nil{
 			log.Print("Encerrando a conexão.")
 			delete(clients, &newClient)
-			return
+			broadcastCh <- Message{From: newClient.Nickname, Content: newClient.Nickname + " saiu do chat.", SentAt: time.Now().Format("2006-01-02 15:04:05")}
+			break
 		}
 		log.Println(string(data))
 
-		for client := range clients{
-		client.conn.Write(r.Context(), websocket.MessageText, data)
+		
+		var msgRec Message 
+		json.Unmarshal(data, &msgRec)
+
+		broadcastCh <- Message{From: msgRec.From, Content: msgRec.Content, SentAt: time.Now().Format("2006-01-02 15:04:05")}
+	}
+	}
+
+
+func broadcast(){
+	for newMsg := range broadcastCh{
+		
+	for client := range clients{
+		msg, err := json.Marshal(newMsg)
+		if err != nil{
+			log.Print(err)
+		}
+		client.conn.Write(client.ctx, websocket.MessageText, msg)
+	}
+
+	}
+}
+
+
+func joiner(){
+	for newClient := range joinCh{
+		clients[newClient] = true
+
+	for client := range clients{
+		broadcastCh <- Message{From: client.Nickname, Content: client.Nickname + " entrou no chat.", SentAt: time.Now().Format("2006-01-02 15:04:05")}
 	}
 	}
 }
@@ -66,6 +112,6 @@ func main(){
 		json.NewEncoder(w).Encode(res)
 	})
 
-	http.ListenAndServe(":8080", nil)
 	log.Print("Starting server at localhost:8080")
+	http.ListenAndServeTLS(":8080", "server.crt", "server.key", nil)
 }
